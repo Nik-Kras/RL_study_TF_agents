@@ -3,6 +3,7 @@ import abc
 from tf_agents.specs import array_spec
 from tf_agents.environments import py_environment
 from tf_agents.trajectories import time_step as ts
+from MapGenerator.Grid import *
 
 """
 To use that environment do next:
@@ -83,11 +84,14 @@ class GridWorld(py_environment.PyEnvironment):
     #         return ts.transition(
     #             np.array([self._state], dtype=np.int32), reward=0.0, discount=1.0)
 
-    def __init__(self, tot_row, tot_col, goal_rewards=None, step_cost=-0.01, observation_step=5):
+    def __init__(self, size, goal_rewards=None, step_cost=-0.01, observation_step=5):
 
         self.action_space_size = 4
-        self.world_row = tot_row
-        self.world_col = tot_col
+        self.world_row = size
+        self.world_col = size
+
+        # The count of steps in episode. If it exceeds the limits - terminate the game
+        self.step_count = 0
 
         # Originally agent was started as random, I changed to be deterministic ( [0.5, 0.5] -> [1, 0] )
         # self.transition_matrix = np.ones((self.action_space_size, self.action_space_size))/ self.action_space_size
@@ -96,8 +100,8 @@ class GridWorld(py_environment.PyEnvironment):
         # from tf_agents.specs import array_spec
         # array_spec.BoundedArraySpec(shape=(tot_row, tot_col), dtype=np.int32, minimum=-1, maximum=4, name='Map')
         # Spec variables are needed to show the specification for some other variables
-        self._map_spec = array_spec.BoundedArraySpec(shape=(tot_row, tot_col), dtype=np.int32, minimum=-1, maximum=4, name='map')
-        self.state_matrix = np.zeros((tot_row, tot_col))  # Environmental Map of walls and goals
+        self._map_spec = array_spec.BoundedArraySpec(shape=(self.world_row, self.world_col), dtype=np.int32, minimum=-1, maximum=4, name='map')
+        self.state_matrix = np.zeros((self.world_row, self.world_col))  # Environmental Map of walls and goals
 
         # array_spec.BoundedArraySpec(shape=(observation_step, observation_step), dtype=np.int32, minimum=-1, maximum=4, name='Observation')
         self._observ_spec = array_spec.BoundedArraySpec(shape=(observation_step, observation_step), dtype=np.int32, minimum=-1, maximum=4, name='observation')
@@ -106,7 +110,7 @@ class GridWorld(py_environment.PyEnvironment):
 
         # array_spec.BoundedArraySpec(shape=(1, 1), dtype=np.int32, minimum=0, maximum=np.max(tot_row, tot_col), name='PlayerPosition')
         self.position = [0, 0]  # Indexes of Player position
-        self.initial_position = [np.random.randint(tot_row), np.random.randint(tot_col)]
+        self.initial_position = [np.random.randint(self.world_row), np.random.randint(self.world_col)]
 
         # Set the reward for each goal A, B, C, D.
         # It could differ for each agent,
@@ -120,12 +124,12 @@ class GridWorld(py_environment.PyEnvironment):
         # So, should be set at the beginning of the game
         self.step_cost = step_cost
 
-        discount = 0.99
-        step_type = "First"
-        reward = 1
-        observation = np.zeros((observation_step, observation_step))
-        # tf_agents.trajectories.TimeStep(step_type, reward, discount, observation)
-        self._current_time_step = (observation, reward, step_type, discount)
+        # discount = 0.99
+        # step_type = "First"
+        # reward = 1
+        # observation = np.zeros((observation_step, observation_step))
+        # # tf_agents.trajectories.TimeStep(step_type, reward, discount, observation)
+        # self._current_time_step = (observation, reward, step_type, discount)
 
         super().__init__()
 
@@ -156,11 +160,30 @@ class GridWorld(py_environment.PyEnvironment):
         #         + str(self.action_space_size-1) + " to use an action for a step")
         return self._action_spec
 
+    # IMPORTANT: It will restore the walls but will put goals in a new positions!
+    # Not sure if that is a right thing to do!!!
+    # ******************************************************************************
+    # It must generate a new map with new positions of a player and goals!!!
+    # So, I must import a Map Generator here!!!
     def _reset(self):
         """Return initial_time_step."""
-        self.position = self.initial_position
 
-        # In the future, it should output Observed map (7x7)
+        # Clear the Map
+        empty_map = np.zeros((self.world_row, self.world_col))
+        self.setStateMatrix(empty_map)
+
+        # Create a new Map
+        Generator = Grid(int(self.world_row / 3))  # How many 3x3 tiles should be put in the Map
+        state_matrix = Generator.GenerateMap() - 1
+        self.setStateMatrix(state_matrix)
+
+        # Put player and goals on the map
+        self.setPosition()
+
+        # Clear step counter in the game
+        self.step_count = 0
+
+        # In the future, it should output Observed map (7x7), not "self.state_matrix"
         return ts.restart(observation=np.array(self.state_matrix, dtype=np.int32))
 
     """
@@ -184,6 +207,17 @@ class GridWorld(py_environment.PyEnvironment):
                 """
         if  0 >= action >= self.action_space_size:
             raise ValueError('The action is not included in the action space.')
+
+        # If player made more than 90 steps - terminate the game
+        if self.step_count > 90:
+            return ts.termination(np.array(self.state_matrix, dtype=np.int32), reward=-1)
+        elif self.step_count == 0:
+            # Not sure if I need to reset here or to put goals
+            # self.reset()
+            print("First Move!")
+            # self.setPosition()    # To set goals and Player - use reset()!
+
+        self.step_count += 1
 
         # print("The Player's position is: " + str(self.position))
         # print("The Step() function is called with action: " + str(action))
@@ -338,11 +372,15 @@ class GridWorld(py_environment.PyEnvironment):
             while self.state_matrix[randomRow][randomCol] != 0:
                 randomRow = np.random.randint(self.world_row)
                 randomCol = np.random.randint(self.world_col)
-                print(self.state_matrix[randomRow][randomCol])
-            self.state_matrix[randomRow, randomCol] = obj    # Record obj position on the map
+                # print(self.state_matrix[randomRow][randomCol])
+
             if obj == 10:
                 self.position = [randomRow, randomCol]
                 self.initial_position = [randomRow, randomCol]
+            else:
+                # No need in placing a player on the map
+                # The players position can be placed in separate variable, so Map is constant
+                self.state_matrix[randomRow, randomCol] = obj  # Record obj position on the map
 
     def getWorldState(self):
         return self.state_matrix
