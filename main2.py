@@ -1,9 +1,9 @@
-import Environment
+import tensorflow as tf
 from tf_agents.environments import utils
 from tf_agents.environments import tf_py_environment
 from tf_agents.environments import tf_environment
 from tf_agents.environments import wrappers
-from MapGenerator.Grid import *
+import Environment
 import numpy as np
 
 game = Environment.GridWorld(12)
@@ -60,3 +60,19 @@ print("***************************** TensorFlow Wrapper is applied *************
 print(isinstance(tf_env, tf_environment.TFEnvironment))
 print("TimeStep Specs:", tf_env.time_step_spec())
 print("Action Specs:", tf_env.action_spec())
+
+time_step = tf_env.reset()
+num_steps = 3
+transitions = []
+reward = 0
+for i in range(num_steps):
+  action = tf.constant([i % 2])
+  # applies the action and returns the new TimeStep.
+  next_time_step = tf_env.step(action)
+  transitions.append([time_step, action, next_time_step])
+  reward += next_time_step.reward
+  time_step = next_time_step
+
+np_transitions = tf.nest.map_structure(lambda x: x.numpy(), transitions)
+print('\n'.join(map(str, np_transitions)))
+print('Total reward:', reward.numpy())

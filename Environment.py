@@ -134,7 +134,7 @@ class GridWorld(py_environment.PyEnvironment):
         super().__init__()
 
     def time_step_spec_grid_world(self):
-        """Return time_step_spec."""
+        """Return time_step_spec for this specific grid world"""
         return "A tuple of Observation, Reward, Step_Type and Discount. Example: " \
                   + str(np.shape(self._current_time_step)) + \
                   "\n\v * Observation is a part of a map seen by a player" \
@@ -167,6 +167,8 @@ class GridWorld(py_environment.PyEnvironment):
     # So, I must import a Map Generator here!!!
     def _reset(self):
         """Return initial_time_step."""
+
+        print("The RESET was called")
 
         # Clear the Map
         empty_map = np.zeros((self.world_row, self.world_col))
@@ -252,6 +254,7 @@ class GridWorld(py_environment.PyEnvironment):
         else:
             # You hit the border - Terminate the game
             print("Player goes out of the borders")
+            self.reset()
             return ts.termination(np.array(self.state_matrix, dtype=np.int32), reward=-1)
 
         # Check if player has hit the wall on its move...
