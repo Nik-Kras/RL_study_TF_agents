@@ -8,6 +8,8 @@ from tf_agents.networks import network
 from tf_agents.specs import tensor_spec
 from tf_agents.policies import q_policy
 
+import numpy as np
+
 import Environment
 
 game = Environment.GridWorld(12)
@@ -25,7 +27,7 @@ print(isinstance(tf_env, tf_environment.TFEnvironment))
 print("TimeStep Specs:", tf_env.time_step_spec())
 # print("Action Specs:", tf_env.action_spec())
 
-input_tensor_spec = tensor_spec.TensorSpec(shape=[12, 12, 1], dtype=tf.float32)
+input_tensor_spec = tensor_spec.TensorSpec(shape=[1, 12, 12], dtype=tf.int32)
 time_step_spec = ts.time_step_spec(input_tensor_spec)
 
 print("New TimeStep Spec:", time_step_spec)
@@ -41,22 +43,21 @@ print(time_step_spec.observation)
 print(time_step_spec.observation.shape.as_list())
 print("_________________________________")
 
-batch_size = 2
+# batch_size = 2
 # shape1 = batch_size
 # shapeList = time_step_spec.observation.shape.as_list()
 # shape2 = shapeList[0]
 # shape3 = shapeList[1]
 
-print("Shape: " + str([batch_size, 12, 12]))
+# print("Shape: " + str([batch_size, 12, 12]))
 
-shape_of_element = tf_env.time_step_spec().observation.shape
-observation = tf.ones(shape=[batch_size, 12, 12])
-time_steps = ts.restart(observation, batch_size=batch_size)
 
-print("observation")
-print(observation)
-print("time_steps")
-print(time_steps)
+# shape_of_element = tf_env.time_step_spec().observation.shape
+# observation = tf.ones(shape=[batch_size, 12, 12])
+time_steps = tf_env.reset()  #ts.restart(observation, batch_size=batch_size)
+
+print("observation: ", time_steps.observation)
+print("time_steps: ", time_steps)
 
 class QNetwork(network.Network):
 
@@ -66,20 +67,26 @@ class QNetwork(network.Network):
         state_spec=(),
         name=name)
     self._sub_layers = [
-        tf.keras.layers.Dense(10),
+        tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(num_actions)
     ]
 
   def call(self, inputs, step_type=None, network_state=()):
     del step_type
-    inputs = tf.cast(inputs, tf.float32)
+    print("called input: ", inputs)
+    my_observation = inputs
+    print("my_observation: ", my_observation)
+    inputs = tf.cast(my_observation, tf.float32)
+    print("Final input: ", inputs)
     for layer in self._sub_layers:
       inputs = layer(inputs)
+    print("Final output: ", inputs)
     return inputs, network_state
 
+print("---- time_step_spec.observation", time_step_spec.observation)
 
 my_q_network = QNetwork(
-    input_tensor_spec=time_step_spec.observation,
+    input_tensor_spec=tf_env.observation_spec(),
     action_spec=action_spec,
     num_actions=num_actions)
 
@@ -90,7 +97,7 @@ my_q_network = QNetwork(
 # print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 my_q_policy = q_policy.QPolicy(
-    time_step_spec=time_step_spec,
+    time_step_spec=tf_env.time_step_spec(),
     action_spec=action_spec,
     q_network=my_q_network)
 
